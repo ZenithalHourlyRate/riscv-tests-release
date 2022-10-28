@@ -1,0 +1,62 @@
+name: release
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  release:
+    runs-on: ubuntu-20.04
+    steps:
+      -
+        name: Checkout
+        uses: actions/checkout@v3
+        with:
+          submodules: recursive
+      -
+        name: Get toolchain
+        run: |
+          wget -q https://github.com/riscv-collab/riscv-gnu-toolchain/releases/download/$(cat riscv-gnu-toolchain)/riscv64-elf-ubuntu-20.04-nightly-$(cat riscv-gnu-toolchain)-nightly.tar.gz
+          sudo tar xf riscv64-elf-ubuntu-20.04-nightly-$(cat riscv-gnu-toolchain)-nightly.tar.gz -C /opt
+
+      -
+        name: compile
+        run: |
+          export RISCV=/opt/riscv
+          export PATH=$RISCV/bin:$PATH
+          export DESTDIR=$GITHUB_WORKSPACE/dist
+          cd riscv-tests
+          autoconf
+          ./configure
+          make
+          make install
+
+      -
+        name: package
+        run: |
+          cd $GITHUB_WORKSPACE
+          tar czf riscv-tests.tgz -C dist .
+
+      -
+        name: release
+        uses: actions/create-release@v1
+        id: create_release
+        with:
+          draft: false
+          prerelease: false
+          release_name: release-${{ github.sha }}
+          tag_name: tag-${{ github.sha }}
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+
+      - name: upload
+        id: upload-release-asset
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: ./riscv-tests.tgz
+          asset_name: riscv-tests.tgz
+          asset_content_type: application/gzip
